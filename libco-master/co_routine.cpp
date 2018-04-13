@@ -148,6 +148,7 @@ static pid_t GetPid()
 	return p ? *(pid_t*)(p + 18) : getpid();
 }
 */
+//删除双向链表中的一个节点，由于节点中记录了上下节点指针及双向链表的头尾指针，因此删除节点时不用遍历链表
 template <class T,class TLink>
 void RemoveFromLink(T *ap)
 {
@@ -155,7 +156,7 @@ void RemoveFromLink(T *ap)
 	if(!lst) return ;
 	assert( lst->head && lst->tail );
 
-	if( ap == lst->head )
+	if( ap == lst->head )//删除头结点
 	{
 		lst->head = ap->pNext;
 		if(lst->head)
@@ -171,7 +172,7 @@ void RemoveFromLink(T *ap)
 		}
 	}
 
-	if( ap == lst->tail )
+	if( ap == lst->tail )//删除尾节点
 	{
 		lst->tail = ap->pPrev;
 		if(lst->tail)
@@ -184,18 +185,19 @@ void RemoveFromLink(T *ap)
 		ap->pNext->pPrev = ap->pPrev;
 	}
 
-	ap->pPrev = ap->pNext = NULL;
+	ap->pPrev = ap->pNext = NULL;//将节点从链表中删除
 	ap->pLink = NULL;
 }
 
+//双向链表中添加一个新节点
 template <class TNode,class TLink>
 void inline AddTail(TLink*apLink,TNode *ap)
 {
-	if( ap->pLink )
+	if( ap->pLink )//记录了双向链表的头尾指针，不为空，即该节点已存在
 	{
 		return ;
 	}
-	if(apLink->tail)
+	if(apLink->tail)//不为空，即该双向链表存在节点，在该节点后添加节点
 	{
 		apLink->tail->pNext = (TNode*)ap;
 		ap->pNext = NULL;
@@ -204,11 +206,12 @@ void inline AddTail(TLink*apLink,TNode *ap)
 	}
 	else
 	{
-		apLink->head = apLink->tail = ap;
+		apLink->head = apLink->tail = ap;//添加第一个节点
 		ap->pNext = ap->pPrev = NULL;
 	}
 	ap->pLink = apLink;
 }
+//弹出双向链表中的第一个节点
 template <class TNode,class TLink>
 void inline PopHead( TLink*apLink )
 {
@@ -234,7 +237,7 @@ void inline PopHead( TLink*apLink )
 		apLink->head->pPrev = NULL;
 	}
 }
-
+//合并两个双向链表
 template <class TNode,class TLink>
 void inline Join( TLink*apLink,TLink *apOther )
 {
@@ -244,6 +247,7 @@ void inline Join( TLink*apLink,TLink *apOther )
 		return ;
 	}
 	TNode *lp = apOther->head;
+	//修改被合并链表所有节点的pLink为apLink
 	while( lp )
 	{
 		lp->pLink = apLink;
@@ -398,7 +402,7 @@ int AddTimeout( stTimeout_t *apTimeout,stTimeoutItem_t *apItem ,unsigned long lo
 	}
 	unsigned long long diff = apItem->ullExpireTime - apTimeout->ullStart;
 
-	if( diff >= (unsigned long long)apTimeout->iItemSize )
+	if( diff >= (unsigned long long)apTimeout->iItemSize )//iItemSize=60*1000
 	{
 		diff = apTimeout->iItemSize - 1;
 		co_log_err("CO_ERR: AddTimeout line %d diff %d",
@@ -406,6 +410,7 @@ int AddTimeout( stTimeout_t *apTimeout,stTimeoutItem_t *apItem ,unsigned long lo
 
 		//return __LINE__;
 	}
+	//llStartIdx初始化为0
 	AddTail( apTimeout->pItems + ( apTimeout->llStartIdx + diff ) % apTimeout->iItemSize , apItem );
 
 	return 0;
@@ -546,6 +551,7 @@ void co_swap(stCoRoutine_t* curr, stCoRoutine_t* pending_co);
 
 void co_resume( stCoRoutine_t *co )
 {
+	INFO("启动协程[%p]", co);
 	stCoRoutineEnv_t *env = co->env;
 	stCoRoutine_t *lpCurrRoutine = env->pCallStack[ env->iCallStackSize - 1 ];
 	if( !co->cStart )
@@ -563,7 +569,7 @@ void co_yield_env( stCoRoutineEnv_t *env )
 	
 	stCoRoutine_t *last = env->pCallStack[ env->iCallStackSize - 2 ];
 	stCoRoutine_t *curr = env->pCallStack[ env->iCallStackSize - 1 ];
-
+	INFO("跳出协程[%p]，恢复主协程[%p]", curr, last);
 	env->iCallStackSize--;
 
 	co_swap( curr, last);
@@ -736,11 +742,11 @@ void OnPollProcessEvent( stTimeoutItem_t * ap )
 void OnPollPreparePfn( stTimeoutItem_t * ap,struct epoll_event &e,stTimeoutItemLink_t *active )
 {
 	stPollItem_t *lp = (stPollItem_t *)ap;
-	lp->pSelf->revents = EpollEvent2Poll( e.events );
+	lp->pSelf->revents = EpollEvent2Poll( e.events );//将epoll事件转化为poll事件
 
 
 	stPoll_t *pPoll = lp->pPoll;
-	pPoll->iRaiseCnt++;
+	pPoll->iRaiseCnt++;//记录该pPoll的触发次数
 
 	if( !pPoll->iAllEventDetach )
 	{
@@ -876,7 +882,7 @@ stCoRoutine_t *GetCurrThreadCo( )
 }
 
 
-
+//创建stPoll_t对象，add epoll， add timeout双向链表中
 typedef int (*poll_pfn_t)(struct pollfd fds[], nfds_t nfds, int timeout);
 int co_poll_inner( stCoEpoll_t *ctx,struct pollfd fds[], nfds_t nfds, int timeout, poll_pfn_t pollfunc)
 {
@@ -888,18 +894,20 @@ int co_poll_inner( stCoEpoll_t *ctx,struct pollfd fds[], nfds_t nfds, int timeou
 	{
 		timeout = INT_MAX;
 	}
+	//获取当前协程环境的epoll句柄
 	int epfd = ctx->iEpollFd;
+	//获取当前协程句柄
 	stCoRoutine_t* self = co_self();
 
 	//1.struct change
 	stPoll_t& arg = *((stPoll_t*)malloc(sizeof(stPoll_t)));
 	memset( &arg,0,sizeof(arg) );
 
-	arg.iEpollFd = epfd;
-	arg.fds = (pollfd*)calloc(nfds, sizeof(pollfd));
-	arg.nfds = nfds;
+	arg.iEpollFd = epfd;//epoll句柄
+	arg.fds = (pollfd*)calloc(nfds, sizeof(pollfd));//poll中的事件指针
+	arg.nfds = nfds;//poll监听的事件个数
 
-	stPollItem_t arr[2];
+	stPollItem_t arr[2];//事件监听个数小于2，即为1时使用栈空间，且不适用共享栈；若大于等于2时或使用共享栈时申请堆空间
 	if( nfds < sizeof(arr) / sizeof(arr[0]) && !self->cIsShareStack)
 	{
 		arg.pPollItems = arr;
@@ -910,11 +918,12 @@ int co_poll_inner( stCoEpoll_t *ctx,struct pollfd fds[], nfds_t nfds, int timeou
 	}
 	memset( arg.pPollItems,0,nfds * sizeof(stPollItem_t) );
 
-	arg.pfnProcess = OnPollProcessEvent;
-	arg.pArg = GetCurrCo( co_get_curr_thread_env() );
+	arg.pfnProcess = OnPollProcessEvent;//函数指针：获取stTimeoutItem_t存储的协程句柄，并运行此协程
+	arg.pArg = GetCurrCo( co_get_curr_thread_env() );//指向当前协程句柄
 	
 	
 	//2. add epoll
+	//添加epoll事件
 	for(nfds_t i=0;i<nfds;i++)
 	{
 		arg.pPollItems[i].pSelf = arg.fds + i;
@@ -926,8 +935,8 @@ int co_poll_inner( stCoEpoll_t *ctx,struct pollfd fds[], nfds_t nfds, int timeou
 		if( fds[i].fd > -1 )
 		{
 			ev.data.ptr = arg.pPollItems + i;
-			ev.events = PollEvent2Epoll( fds[i].events );
-
+			ev.events = PollEvent2Epoll( fds[i].events );//将poll的读写事件转换为epoll的读写事件类型
+			INFO("epoll add, fd = %d", fds[i].fd);
 			int ret = co_epoll_ctl( epfd,EPOLL_CTL_ADD, fds[i].fd, &ev );
 			if (ret < 0 && errno == EPERM && nfds == 1 && pollfunc != NULL)
 			{
@@ -948,6 +957,7 @@ int co_poll_inner( stCoEpoll_t *ctx,struct pollfd fds[], nfds_t nfds, int timeou
 
 	unsigned long long now = GetTickMS();
 	arg.ullExpireTime = now + timeout;
+	//添加一个arg节点到双向链表中（以超时时间算出指向该双向链表的下标）
 	int ret = AddTimeout( ctx->pTimeout,&arg,now );
 	int iRaiseCnt = 0;
 	if( ret != 0 )
@@ -960,6 +970,7 @@ int co_poll_inner( stCoEpoll_t *ctx,struct pollfd fds[], nfds_t nfds, int timeou
 	}
     else
 	{
+		//添加双向链表成功后，切回主协程
 		co_yield_env( co_get_curr_thread_env() );
 		iRaiseCnt = arg.iRaiseCnt;
 	}
@@ -972,6 +983,7 @@ int co_poll_inner( stCoEpoll_t *ctx,struct pollfd fds[], nfds_t nfds, int timeou
 			int fd = fds[i].fd;
 			if( fd > -1 )
 			{
+				INFO("epoll del, fd = %d", fd);
 				co_epoll_ctl( epfd,EPOLL_CTL_DEL,fd,&arg.pPollItems[i].stEvent );
 			}
 			fds[i].revents = arg.fds[i].revents;

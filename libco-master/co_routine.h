@@ -22,6 +22,7 @@
 #include <stdint.h>
 #include <sys/poll.h>
 #include <pthread.h>
+#include "log.h"
 
 //1.struct
 

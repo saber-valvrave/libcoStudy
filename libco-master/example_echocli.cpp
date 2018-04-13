@@ -150,20 +150,21 @@ static void *readwrite_routine( void *arg )
 		}
 		
 		ret = write( fd,str, 8);
+		sleep(1);
 		if ( ret > 0 )
 		{
 			ret = read( fd,buf, sizeof(buf) );
 			if ( ret <= 0 )
 			{
-				//printf("co %p read ret %d errno %d (%s)\n",
-				//		co_self(), ret,errno,strerror(errno));
+				printf("co %p read ret %d errno %d (%s)\n",
+						co_self(), ret,errno,strerror(errno));
 				close(fd);
 				fd = -1;
 				AddFailCnt();
 			}
 			else
 			{
-				//printf("echo %s fd %d\n", buf,fd);
+				printf("echo %s fd %d\n", buf,fd);
 				AddSuccCnt();
 			}
 		}

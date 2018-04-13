@@ -128,16 +128,21 @@ static void *accept_routine( void * )
 		struct sockaddr_in addr; //maybe sockaddr_un;
 		memset( &addr,0,sizeof(addr) );
 		socklen_t len = sizeof(addr);
-		//接受客户端连接，并申请存储空间，设置读写超时，将指向空间指针记录到以fd为下标的静态数组中
+		//接受客户端连接，并申请存储空间，设置读写超时，将指向空间指针记录到以fd为下标的静态数组中（hook模块）
+		INFO("接受客户端连接...");
 		int fd = co_accept(g_listen_fd, (struct sockaddr *)&addr, &len);
 		if( fd < 0 )
 		{
+			INFO("接受客户端连接[失败]...");
 			struct pollfd pf = { 0 };
 			pf.fd = g_listen_fd;
 			pf.events = (POLLIN|POLLERR|POLLHUP);
+			//连接失败后，该函数会切回主协程
 			co_poll( co_get_epoll_ct(),&pf,1,1000 );
 			continue;
 		}
+		//连接成功，若无任务则关闭连接
+		INFO("接受客户端连接[成功]...");
 		if( g_readwrite.empty() )
 		{
 			close( fd );
@@ -147,6 +152,7 @@ static void *accept_routine( void * )
 		task_t *co = g_readwrite.top();
 		co->fd = fd;
 		g_readwrite.pop();
+		//切到一个读写协程
 		co_resume( co->co );
 	}
 	return 0;
