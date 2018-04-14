@@ -381,69 +381,74 @@ void FreeTimeout( stTimeout_t *apTimeout )
 }
 int AddTimeout( stTimeout_t *apTimeout,stTimeoutItem_t *apItem ,unsigned long long allNow )
 {
-	if( apTimeout->ullStart == 0 )
+	if( apTimeout->ullStart == 0 )//初始化时当前系统时间，除非手动置为0，但目前没找到，此时不会出现该情景
 	{
 		apTimeout->ullStart = allNow;
 		apTimeout->llStartIdx = 0;
 	}
-	if( allNow < apTimeout->ullStart )
+	if( allNow < apTimeout->ullStart )//正常调用时allNow为当前时间，其置肯定大于或等于初始化的当前系统时间，此时不会出现该情景
 	{
 		co_log_err("CO_ERR: AddTimeout line %d allNow %llu apTimeout->ullStart %llu",
 					__LINE__,allNow,apTimeout->ullStart);
 
 		return __LINE__;
 	}
-	if( apItem->ullExpireTime < allNow )
+	if( apItem->ullExpireTime < allNow )//正常使用时，apItem->ullExpireTime为allNow和timeout之和，此时不会出现该情景
 	{
 		co_log_err("CO_ERR: AddTimeout line %d apItem->ullExpireTime %llu allNow %llu apTimeout->ullStart %llu",
 					__LINE__,apItem->ullExpireTime,allNow,apTimeout->ullStart);
 
 		return __LINE__;
 	}
-	unsigned long long diff = apItem->ullExpireTime - apTimeout->ullStart;
-
+	INFO("调用AddTimeout函数 apTimeout->ullStart=%ld apTimeout->llStartIdx=%ld",apTimeout->ullStart, apTimeout->llStartIdx);
+	unsigned long long diff = apItem->ullExpireTime - apTimeout->ullStart;//其值>=timeout
+	INFO("调用AddTimeout的间隔时间=%ld",diff);
 	if( diff >= (unsigned long long)apTimeout->iItemSize )//iItemSize=60*1000
 	{
-		diff = apTimeout->iItemSize - 1;
+		diff = apTimeout->iItemSize - 1;//若出现大于iItem的最大容量时，占用最后元素的存储空间
 		co_log_err("CO_ERR: AddTimeout line %d diff %d",
 					__LINE__,diff);
 
 		//return __LINE__;
 	}
 	//llStartIdx初始化为0
+	//将stPoll_t节点对象存入到pItems其中一个元素指向的双向链表中
 	AddTail( apTimeout->pItems + ( apTimeout->llStartIdx + diff ) % apTimeout->iItemSize , apItem );
-
+	INFO("调用AddTimeout函数 添加item节点地址：%p", apTimeout->pItems + ( apTimeout->llStartIdx + diff ) % apTimeout->iItemSize);
 	return 0;
 }
 inline void TakeAllTimeout( stTimeout_t *apTimeout,unsigned long long allNow,stTimeoutItemLink_t *apResult )
 {
-	if( apTimeout->ullStart == 0 )
+	if( apTimeout->ullStart == 0 )//初始化时当前系统时间，除非手动置为0，但目前没找到，此时不会出现该情景
 	{
 		apTimeout->ullStart = allNow;
 		apTimeout->llStartIdx = 0;
 	}
 
-	if( allNow < apTimeout->ullStart )
+	if( allNow < apTimeout->ullStart )//正常调用时allNow为当前时间，其置肯定大于或等于初始化的当前系统时间，此时不会出现该情景
 	{
 		return ;
 	}
 	int cnt = allNow - apTimeout->ullStart + 1;
 	if( cnt > apTimeout->iItemSize )
 	{
-		cnt = apTimeout->iItemSize;
+		cnt = apTimeout->iItemSize;//若cnt大于item最大容量，则取值最大容量值，即60*1000
 	}
-	if( cnt < 0 )
+	if( cnt < 0 )//正常调用时allNow为当前时间，其置肯定大于或等于初始化的当前系统时间，此时不会出现该情景
 	{
 		return;
 	}
+	INFO("调用TakeAllTimeout函数 apTimeout->ullStart=%ld apTimeout->llStartIdx=%ld",apTimeout->ullStart, apTimeout->llStartIdx);
+	INFO("调用TakeAllTimeout的间隔时间=%ld  llStartIdx=%ld", cnt,apTimeout->llStartIdx);
 	for( int i = 0;i<cnt;i++)
 	{
 		int idx = ( apTimeout->llStartIdx + i) % apTimeout->iItemSize;
 		Join<stTimeoutItem_t,stTimeoutItemLink_t>( apResult,apTimeout->pItems + idx  );
+		INFO("调用TakeAllTimeout函数 idx=%d  合并节点链表地址：%p", idx, apTimeout->pItems + idx);
 	}
 	apTimeout->ullStart = allNow;
 	apTimeout->llStartIdx += cnt - 1;
-
+	INFO("调用TakeAllTimeout函数 update apTimeout->ullStart=%ld apTimeout->llStartIdx=%ld",apTimeout->ullStart, apTimeout->llStartIdx);
 
 }
 static int CoRoutineFunc( stCoRoutine_t *co,void * )
@@ -747,23 +752,24 @@ void OnPollPreparePfn( stTimeoutItem_t * ap,struct epoll_event &e,stTimeoutItemL
 
 	stPoll_t *pPoll = lp->pPoll;
 	pPoll->iRaiseCnt++;//记录该pPoll的触发次数
-
-	if( !pPoll->iAllEventDetach )
+	INFO("调用OnPollPreparePfn函数 iRaiseCnt=%d  iAllEventDetach=%d",pPoll->iRaiseCnt, pPoll->iAllEventDetach );
+	if( !pPoll->iAllEventDetach )//初始化为0，第一次调用进入此逻辑
 	{
 		pPoll->iAllEventDetach = 1;
 
-		RemoveFromLink<stTimeoutItem_t,stTimeoutItemLink_t>( pPoll );
+		RemoveFromLink<stTimeoutItem_t,stTimeoutItemLink_t>( pPoll );//从iterm双向链表中移除
 
-		AddTail( active,pPoll );
-
+		AddTail( active,pPoll );//将该节点添加到就绪的双向链表中
+		INFO("将ap节点移出链表，并将ap添加到active指向的链表中");
 	}
 }
 
 
 void co_eventloop( stCoEpoll_t *ctx,pfn_co_eventloop_t pfn,void *arg )
 {
-	if( !ctx->result )
+	if( !ctx->result )//初始化时为空，第一次调用进入该处理逻辑
 	{
+		//申请存储空间，同时申请与epoll句柄数相同的事件存储空间
 		ctx->result =  co_epoll_res_alloc( stCoEpoll_t::_EPOLL_SIZE );
 	}
 	co_epoll_res *result = ctx->result;
@@ -771,19 +777,20 @@ void co_eventloop( stCoEpoll_t *ctx,pfn_co_eventloop_t pfn,void *arg )
 
 	for(;;)
 	{
+		//等待就绪的epoll事件，超时1s
 		int ret = co_epoll_wait( ctx->iEpollFd,result,stCoEpoll_t::_EPOLL_SIZE, 1 );
 
-		stTimeoutItemLink_t *active = (ctx->pstActiveList);
-		stTimeoutItemLink_t *timeout = (ctx->pstTimeoutList);
+		stTimeoutItemLink_t *active = (ctx->pstActiveList);//就绪的双向链表
+		stTimeoutItemLink_t *timeout = (ctx->pstTimeoutList);//超时的双向链表
 
 		memset( timeout,0,sizeof(stTimeoutItemLink_t) );
-
+		INFO("调用co_eventloop时，就绪监听事件:%d",ret);
 		for(int i=0;i<ret;i++)
 		{
 			stTimeoutItem_t *item = (stTimeoutItem_t*)result->events[i].data.ptr;
 			if( item->pfnPrepare )
 			{
-				item->pfnPrepare( item,result->events[i],active );
+				item->pfnPrepare( item,result->events[i],active );//移除iterm双向链表，添加就绪链表
 			}
 			else
 			{
@@ -810,8 +817,10 @@ void co_eventloop( stCoEpoll_t *ctx,pfn_co_eventloop_t pfn,void *arg )
 		{
 
 			PopHead<stTimeoutItem_t,stTimeoutItemLink_t>( active );
+			INFO("调用co_eventloop时，now=%ld  ullExpireTime=%ld", now, lp->ullExpireTime);
             if (lp->bTimeout && now < lp->ullExpireTime) 
 			{
+
 				int ret = AddTimeout(ctx->pTimeout, lp, now);
 				if (!ret) 
 				{
@@ -822,6 +831,7 @@ void co_eventloop( stCoEpoll_t *ctx,pfn_co_eventloop_t pfn,void *arg )
 			}
 			if( lp->pfnProcess )
 			{
+				INFO("调用co_eventloop切出该协程");
 				lp->pfnProcess( lp );
 			}
 

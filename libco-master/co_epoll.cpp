@@ -36,7 +36,7 @@ int	co_epoll_create( int size )
 {
 	return epoll_create( size );
 }
-
+//申请存储空间，同时申请与epoll句柄数相同的事件存储空间
 struct co_epoll_res *co_epoll_res_alloc( int n )
 {
 	struct co_epoll_res * ptr = 
