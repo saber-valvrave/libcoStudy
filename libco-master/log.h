@@ -8,7 +8,7 @@ extern "C" {
 #include <libgen.h>
 #include <string.h>
 }
-#define LOG 1
+//#define LOG 1
 
 void info(const char*file, const int line, const char*fmt,...);
 

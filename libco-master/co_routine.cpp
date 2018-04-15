@@ -811,6 +811,7 @@ void co_eventloop( stCoEpoll_t *ctx,pfn_co_eventloop_t pfn,void *arg )
 		}
 
 		Join<stTimeoutItem_t,stTimeoutItemLink_t>( active,timeout );
+		//运行到此处，此时active链表有可能包含就绪的节点和超时节点
 
 		lp = active->head;
 		while( lp )
@@ -818,9 +819,11 @@ void co_eventloop( stCoEpoll_t *ctx,pfn_co_eventloop_t pfn,void *arg )
 
 			PopHead<stTimeoutItem_t,stTimeoutItemLink_t>( active );
 			INFO("调用co_eventloop时，now=%ld  ullExpireTime=%ld", now, lp->ullExpireTime);
+			//就绪事件，不会进入该逻辑。
+			//超时事件时，一般now和ullExpireTime都相等，也不会进入该逻辑
             if (lp->bTimeout && now < lp->ullExpireTime) 
 			{
-
+				//此时将该节点继续添加到item指向的链表中
 				int ret = AddTimeout(ctx->pTimeout, lp, now);
 				if (!ret) 
 				{
@@ -832,6 +835,9 @@ void co_eventloop( stCoEpoll_t *ctx,pfn_co_eventloop_t pfn,void *arg )
 			if( lp->pfnProcess )
 			{
 				INFO("调用co_eventloop切出该协程");
+				//超时时，恢复lp指向的协程，此时会回收lp对应链表节点的资源
+				//就绪时，一般会调到读写协程
+				//调到接受连接协程，此时情景分析：接受连接失败，此时将监听fd添加到链表，等到此超时，进入超时处理
 				lp->pfnProcess( lp );
 			}
 

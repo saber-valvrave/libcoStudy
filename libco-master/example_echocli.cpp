@@ -148,7 +148,7 @@ static void *readwrite_routine( void *arg )
 			} 
 	  			
 		}
-		
+		sleep(10);
 		ret = write( fd,str, 8);
 		sleep(1);
 		if ( ret > 0 )
